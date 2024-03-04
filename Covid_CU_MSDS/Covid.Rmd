@@ -1,0 +1,81 @@
+---
+title: "Covid_JHU_CU_MSDS"
+output: html_document
+---
+
+## Research Question:
+#### What is the relationship between population density and per-capita Covid death rate at the county level in the United States?
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE}
+library(tidyverse)
+```
+## Data
+```{r}
+#First we will read in county-level Covid death data collected by Johns Hopkins University
+US_deaths_full = 
+  read.csv("https://github.com/CSSEGISandData/COVID-19/raw/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_US.csv")
+#US_deaths_full %>% head(5)
+```
+https://covid19.census.gov/maps/21843f238cbb46b08615fc53e19e0daf
+```{r}
+#next we will read in the population density data from the census bureau
+#downloaded from https://covid19.census.gov/maps/21843f238cbb46b08615fc53e19e0daf and posted to github
+
+pop_dens = read.csv("https://raw.githubusercontent.com/JMorrisLent/US_County_Pop_Density/main/Average_Household_Size_and_Population_Density_-_County(1).csv")
+#pop_dens %>% head(3)
+```
+
+```{r}
+#tidy and transform the covid death data
+US_deaths = US_deaths_full %>% select(FIPS, Province_State, Combined_Key, Population, X3.9.23)
+US_deaths$Per_Capita_Deaths = US_deaths$X3.9.23 / US_deaths$Population
+#US_deaths %>% head(5)
+```
+
+```{r}
+#tidy the population density data
+pop_dens = pop_dens %>% select(GEOID, B01001_calc_PopDensity)
+#pop_dens %>% head (10)
+```
+
+```{r}
+join_df = merge(US_deaths, pop_dens, by.x = "FIPS", by.y = "GEOID", all.x = F, all.y = T)
+join_df$Population_Density = join_df$B01001_calc_PopDensity
+```
+
+```{r}
+ggplot(join_df, aes(x = Population_Density, y = Per_Capita_Deaths)) + geom_point()
+#it's diffucult to see what is going on in this plot, let's try taking the log of population density
+```
+
+```{r}
+ggplot(join_df, aes(x = Population_Density, y = Per_Capita_Deaths)) + geom_point() + scale_x_continuous(trans = 'log10')
+#we can see a potential problem with the data - fairly densely populated counties reporting no deaths
+#on inspection of the dataframe the problem appears to be lack of reporting from Puerto Rico and a number of Utah counties
+#we should be able to safely remove counties with a per capita death rate of exactly zero
+```
+
+```{r}
+join_df = join_df %>% subset(Per_Capita_Deaths > 0)
+```
+
+```{r}
+ggplot(join_df, aes(x = Population_Density, y = Per_Capita_Deaths)) + geom_point() + scale_x_continuous(trans = 'log10')
+#from this and the previous chart it seems that there is little correlation, but we can still check with a linear model
+```
+```{r}
+model = lm(Per_Capita_Deaths ~ Population_Density, join_df, weights = Population)
+summary(model)
+#We can see from the R-Squared and the charts that there is nearly no correlation between county population density and Covid death rate.
+```
+
+
+
+## Discussion of bias and limitations
+* What was considered a death caused by Covid-19 was a contentious issue in the United States. Due to the United States federal system there may have been inconsistent standards applied between states, as well any differences between individual municipalities and hospitals.
+* Counties are a blunt geography that do not capture the demographic nuances of very densely populated inner cities, for example
+* This analysis looked at death rates after the Pandemic was largely spent; different types of population centers will have had different experiences at different stages of the pandemic
