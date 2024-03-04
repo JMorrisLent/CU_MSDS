@@ -1,0 +1,209 @@
+---
+title: "NYPD_Shooting_Basic_Exploration"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE}
+library(ggplot2)
+library(dplyr)
+library(shiny)
+library(zoo)
+library(chron)
+```
+
+## Cursory visual and summary examination:
+```{r}
+df = read.csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+head(df, 1)
+```
+
+```{r}
+str(df)
+```
+
+```{r}
+summary(df)
+```
+
+## Single variable examination
+
+### Date
+
+```{r}
+#parse OCCUR_DATE to date format
+df$OCCUR_DATE = as.Date(df$OCCUR_DATE, format = "%m/%d/%Y")
+
+```
+
+```{r}
+plot(table(df$OCCUR_DATE), type = 'l')
+#this chart is messy but we can see a few things:
+#-seasonal peaks and lulls in shootings - presumably lower in the winter and higher in the summer
+#-an overall drop in shooting incidents from the beginning of the data in 2006 until 2020
+#-a large spike around the period of unrest following the killing of George Floyd with overall levels somewhat elevated compared to the previous few years
+#let's bin the dates into individual months to produce a clearer chart
+```
+```{r}
+df$Month = df$OCCUR_DATE %>% as.yearmon()
+df$Month %>% table() %>% plot(type = 'l')
+#this monthly plot is better, but it would be nice to plot each year separately and have the x-axis be yearless months
+#as well as to simply aggregate by year
+```
+
+```{r}
+df$Year = df$OCCUR_DATE %>% format("%Y")
+df$Year %>% table() %>% plot(type = "l")
+# with this yearly plot we can see a sizeable reduction in shootings - almost 50% over about 10 years, before a large spike in 2020
+# that has persisted until the end of the dataset in 2022
+```
+
+```{r}
+df$Year = df$OCCUR_DATE %>% format("%Y") %>% as.integer()
+df$Month = df$OCCUR_DATE %>% format("%m") %>% as.integer()
+yearmon_df = df %>% group_by(Year, Month) %>% summarise(Count = n()) %>% as.data.frame()
+yearmon_df$Year = yearmon_df$Year %>% as.factor()
+yearmon_df$Month = yearmon_df$Month %>% as.factor()
+
+
+```
+```{r message = F}
+yearmon_df %>% head(3)
+```
+
+```{r}
+ggplot(yearmon_df, aes(x = Month, y = Count, group = Year, col = Year)) + geom_line()
+#here we can confirm that shootings tend to peak in the summer.
+#we can also see the surge in shootings in the summer of 2020 after the killing of George Floyd
+```
+
+### Time
+
+```{r}
+df$OCCUR_TIME %>% unique() %>% head(20)
+```
+
+```{r}
+df$OCCUR_TIME %>% table() %>% sort(decreasing = TRUE) %>% head(20)
+#unfortunately while there are time bins included down to the minute, many have been apparently categorized to the nearest 5 minutes or even 30 minutes. 
+# we will group into uniform bins in order to get a decent visualization of the time distribution
+```
+
+```{r}
+df$Hour = df$OCCUR_TIME %>% substr(0,2)
+hour_df = df$Hour %>% table() %>% as.data.frame() %>% setNames(c("Hour", "Count"))
+ggplot(hour_df, aes(x = Hour, y = Count)) + geom_point()
+# are lowest in the morning and then rise throughout the day, peaking late at night
+
+```
+
+### Borough
+
+```{r}
+table(df$BORO)
+# straightforward categories with complete data
+```
+
+### "LOC_OF_OCCUR_DESC"
+
+```{r}
+table(df$LOC_OF_OCCUR_DESC)
+# not particularly helpful with the vast majority of values missing
+```
+
+### Precinct
+```{r}
+table(df$PRECINCT)
+#clearly there is large variance in shooting incidents between different precincts. Some have none while others have had more than 1000 in the dataset
+#obviously needs to be mapped to be meaningful
+```
+```{r}
+df$PRECINCT %>% table() %>% sum()
+#confirming that all incidents are placed in a precinct - no missing values
+```
+
+### Jurisdiction Code
+
+```{r}
+table(df$JURISDICTION_CODE)
+#according to NYC's data website, 0=Patrol, 1=Transit, 2=Housing
+```
+
+###  "LOC_CLASSFCTN_DESC"
+
+```{r}
+table(df$LOC_CLASSFCTN_DESC)
+#vast majority have missing value
+```
+
+### "LOCATION_DESC"
+
+```{r}
+table(df$LOCATION_DESC)
+#interesting categories here but more than half still have missing value
+```
+
+### STATISTICAL_MURDER_FLAG
+
+```{r}
+table(df$STATISTICAL_MURDER_FLAG)
+# from NYC's data website: "Shooting resulted in the victim’s death which would be counted as a murder"
+```
+
+### Shooter Age/Sex/Race
+
+```{r}
+table(df$PERP_AGE_GROUP)
+table(df$PERP_SEX)
+table(df$PERP_RACE)
+#naturally there is a substantial proportion of missing values. Presumably police can't necessarily even get good witness staments to go off of in many instances
+#typical profile of categorized shooter is young, male, black/hispanic
+#based on number of null/missing values it looks like a perp description (i.e. these columns in a single row) is generally either fully filled or fully blank
+```
+
+### Victim Age/Sex/Race
+
+```{r}
+table(df$VIC_AGE_GROUP)
+table(df$VIC_SEX)
+table(df$VIC_RACE)
+#naturally victims have many fewer missing values (they got shot, much easier to find)
+#profile again is young, male, black/hispanic
+```
+
+### Geolocation Data - [needs to be visualized with geographical package]
+
+### Modeling fatality proportion vs precinct number of shootings
+#### A typical question that arises from examining crime data is whether police/emergency resources are being fairly distributed throughout a jurisdiction. While we don't have any sort of deployment or response time data here for NYPD we can check to see if there is any relationship between the number of shootings in a precinct and the proportion that are fatal as a sort of proxy for the speed/efficacy of emergency response in general. 
+```{r}
+#create a dataframe with each princinct's shooting count, fatality count, and proportion of shootings that are fatal
+df$Fatal = df$STATISTICAL_MURDER_FLAG %>% recode('true' = 1, 'false' = 0)
+fatality_prop_df = df %>% group_by(PRECINCT) %>% summarise(Count = n(), Fatalities = sum(Fatal), Fatal_prop = mean(Fatal))
+fatality_prop_df %>% head(5)
+```
+
+```{r}
+#Calculate linear model with x=number of shootings in a precinct and y=proportion of shootings that are fatal
+#As we can see from the model and the graph below there is essentially no correlation,
+#so there is no suggestion *in this data* that more dangerous precincts are experiencing a generally worse or better shooting 
+#emergency response. 
+model = lm(formula = Fatal_prop ~ Count, data = fatality_prop_df, )
+summary(model)
+```
+
+```{r}
+ggplot(fatality_prop_df, aes(x = Count, y = Fatal_prop)) + geom_point() + geom_smooth(method = 'lm', se = F)
+
+```
+
+
+## Data Bias and Quality Discussion 
+* It is not clear whether this data includes instances where people literally were hit with a bullet or if there are also incidents where a victim was just shot at; either way there are presumably more 'shots fired' incidents not included in this data set which have different feature distributions from this dataset
+* A lot of the location description columns are missing so many values that they are not particularly useful
+* Perpetrator description columns may be subject to direct bias as they may be garnered from witness statements which can be faulty
+* Victim description columns should be better since it is easier to actually locate and confirm a shooting victim
