@@ -1,8 +1,8 @@
 ---
 title: "NYPD_Shooting_Basic_Exploration"
 output:
-  html_document: default
   pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -13,8 +13,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(ggplot2)
 library(dplyr)
 library(shiny)
-library(zoo)
-library(chron)
+#library(zoo)
+
 ```
 
 ## Research Question(s)
@@ -54,8 +54,9 @@ plot(table(df$OCCUR_DATE), type = 'l')
 #let's bin the dates into individual months to produce a clearer chart
 ```
 ```{r}
-df$Month = df$OCCUR_DATE %>% as.yearmon()
-df$Month %>% table() %>% plot(type = 'l')
+###skipping this chunk because it requires zoo package and isn't particularly informative
+#df$Month = df$OCCUR_DATE %>% as.yearmon()
+#df$Month %>% table() %>% plot(type = 'l')
 #this monthly plot is better, but it would be nice to plot each year separately and have the x-axis be yearless months
 #as well as to simply aggregate by year
 ```
@@ -205,7 +206,7 @@ summary(model)
 
 ```{r}
 ggplot(fatality_prop_df, aes(x = Count, y = Fatal_prop)) + geom_point() + geom_smooth(method = 'lm', se = F) + ggtitle("Fatality Proportion by Precinct # of Shootings") 
-
+#
 ```
 
 
